@@ -10,48 +10,29 @@
 
 ## Table of Contents
 
-1. [Problem Definition](#1-problem-definition)
-2. [Solution Definition](#2-solution-definition)
-3. [Technical Requirements](#3-technical-requirements)
-   - [Grounding Strategy](#grounding-strategy)
-4. [Prioritisation](#4-prioritisation)
-5. [Roadmap](#5-roadmap)
-6. [Risks & Dependencies](#6-risks--dependencies)
-   - [Hallucination Guardrails](#hallucination-guardrails)
-7. [Evaluations](#7-evaluations)
-   - [Evaluation Strategy](#evaluation-strategy)
-8. [Responsible AI](#8-responsible-ai)
-   - [Production Readiness](#production-readiness)
-9. [Pricing](#9-pricing)
-10. [Open Questions](#10-open-questions)
-11. [Assumptions](#11-assumptions)
+1. [Problem](#1-problem)
+2. [User](#2-user)
+3. [Core Metrics, Prioritisation & Roadmap](#3-core-metrics-prioritisation--roadmap)
+4. [MVP Features](#4-mvp-features)
+5. [Constraints](#5-constraints)
+6. [Technical Requirements](#6-technical-requirements)
+7. [Grounding Strategy](#7-grounding-strategy)
+8. [Prompt Strategy](#8-prompt-strategy)
+9. [Hallucination Guardrails](#9-hallucination-guardrails)
+10. [Evaluation Strategy](#10-evaluation-strategy)
+11. [Production Readiness Criteria & Metrics (HHH)](#11-production-readiness-criteria--metrics-hhh)
+12. [Pricing](#12-pricing)
+13. [Assumptions](#13-assumptions)
 
 ---
 
-## 1. Problem Definition
+## 1. Problem
 
 ### What problem is this solving?
 
 Business professionals — founders, operations managers, and procurement leads — routinely sign NDAs and MSAs without fully understanding what they are agreeing to. Without in-house legal teams, reviewing a single contract takes an average of 90–120 minutes, requires legal expertise most SMBs don't have, and frequently results in missed obligations, unfavourable terms, or costly disputes. Existing tools either require legal training or produce generic summaries that don't surface the specific clauses that matter most to each business.
 
 ContractIQ solves this by automatically extracting the key terms from any NDA or MSA, telling the user exactly where each term lives in the document, how confident the extraction is, and allowing them to ask follow-up questions about the contract in plain English — all without needing a lawyer on call.
-
-### Who are you solving this problem for?
-
-**Primary persona — The Time-Pressed Founder / Ops Lead**
-
-- **Industry:** SaaS, agency, professional services, fintech, e-commerce
-- **Role:** Founder, COO, Procurement Manager, Legal Operations Manager
-- **Company size:** 5–250 employees; no in-house legal counsel
-- **Behaviour:** Signs 5–15 NDAs or MSAs per month; relies on Google searches or expensive ad-hoc legal consultations to understand contract terms
-- **Pain:** Spends 90–120 minutes per contract review; frequently misses key obligations (auto-renewal clauses, indemnification limits, IP assignment); pays $250–$500/hr for a lawyer to review something that feels routine
-
-**Secondary persona — The Freelancer / Consultant**
-
-- **Industry:** Design, marketing, software development, consulting
-- **Role:** Individual contributor signing client contracts
-- **Behaviour:** Receives 1–4 MSAs per month from larger clients; often signs without reading carefully because the power imbalance discourages pushback
-- **Pain:** Cannot afford legal review; unsure which clauses are non-standard or risky; no tool gives page-level references with confidence scores
 
 ### Why is this problem worth solving?
 
@@ -83,6 +64,31 @@ ContractIQ's defensibility comes from four sources:
 | **Why LLMs are necessary** | GPT-4o can read legal prose in context, reason about what a clause means, identify the value of a term (e.g. "36 months" as the notice period), and attribute it to a page number — all in a single inference pass |
 | **Why not just ChatGPT?** | ChatGPT gives unstructured summaries with no page reference, no confidence score, no schema, and no ability to add custom terms to the extraction schema. ContractIQ wraps OpenAI in a structured workflow that produces machine-readable, auditable, user-correctable output |
 
+---
+
+## 2. User
+
+### Who are you solving this problem for?
+
+**Primary persona — The Time-Pressed Founder / Ops Lead**
+
+- **Industry:** SaaS, agency, professional services, fintech, e-commerce
+- **Role:** Founder, COO, Procurement Manager, Legal Operations Manager
+- **Company size:** 5–250 employees; no in-house legal counsel
+- **Behaviour:** Signs 5–15 NDAs or MSAs per month; relies on Google searches or expensive ad-hoc legal consultations to understand contract terms
+- **Pain:** Spends 90–120 minutes per contract review; frequently misses key obligations (auto-renewal clauses, indemnification limits, IP assignment); pays $250–$500/hr for a lawyer to review something that feels routine
+
+**Secondary persona — The Freelancer / Consultant**
+
+- **Industry:** Design, marketing, software development, consulting
+- **Role:** Individual contributor signing client contracts
+- **Behaviour:** Receives 1–4 MSAs per month from larger clients; often signs without reading carefully because the power imbalance discourages pushback
+- **Pain:** Cannot afford legal review; unsure which clauses are non-standard or risky; no tool gives page-level references with confidence scores
+
+---
+
+## 3. Core Metrics, Prioritisation & Roadmap
+
 ### How will you know the problem is solved? (Core Metrics)
 
 **North Star Metric:** Average time from contract upload to completed key-term review
@@ -108,9 +114,114 @@ ContractIQ's defensibility comes from four sources:
 | AI extraction correction rate | — | ≤ 12% of terms manually corrected by users | corrections_count / total_extracted_terms per session |
 | Cost per contract analysis (OpenAI tokens) | — | ≤ $0.25 per analysis (20-page contract) | Billing logs from OpenAI usage dashboard |
 
+### Prioritisation
+
+#### Breaking the Agentic Workflow into Components
+
+1. **Component A — User Authentication & Session Management** (Supabase Auth)
+2. **Component B — PDF Upload & Text Extraction** (Supabase Storage + pdf-parse)
+3. **Component C — Key Term Extraction via OpenAI** (GPT-4o structured output)
+4. **Component D — Custom Term Addition** (user input → appended to extraction prompt)
+5. **Component E — Results Display (PDF Viewer + Key Terms Panel)** (PDF.js + React)
+6. **Component F — Contract Chat (Q&A)** (GPT-4o RAG-style with full contract context)
+7. **Component G — Dashboard & History** (Supabase queries on contracts + key_terms tables)
+8. **Component H — Feedback Collection** (Supabase write to user_feedback table)
+
+#### Risk Assessment per Component
+
+| Component | Check | Result | Explanation |
+|---|---|---|---|
+| B — PDF Text Extraction | Is ML necessary? | FAIL | Rule-based PDF parsing (pdf-parse) is sufficient for text-layer PDFs; ML (OCR) only needed for scanned PDFs, which are out of scope |
+| B — PDF Text Extraction | Do we have data? | PASS | pdf-parse handles standard PDF text layers without training data |
+| B — PDF Text Extraction | Can it meet accuracy requirements? | PARTIAL | ≥ 95% text fidelity for text-layer PDFs; scanned PDFs will fail gracefully |
+| B — PDF Text Extraction | What about bias? | PASS | Pure text extraction; no model bias risk |
+| B — PDF Text Extraction | **Architecture note** | — | Text is extracted **once at upload**, stored in `contracts.contract_text` with `[PAGE N]` markers. The processing pipeline and chat route both read from the DB — neither downloads the PDF again. Supabase Storage is used only for the inline PDF viewer (non-blocking: if Storage is unavailable, only the viewer is hidden; the AI pipeline is unaffected) |
+| C — Key Term Extraction | Is ML necessary? | PASS | Clause variant diversity across law firms and geographies makes rule-based extraction untenable |
+| C — Key Term Extraction | Do we have data to train? | PARTIAL | No proprietary labelled dataset at launch; relying on CUAD dataset + few-shot prompting. Fine-tuning planned for v2 |
+| C — Key Term Extraction | Can it be solved by AI? | PASS | GPT-4o demonstrated strong NDA/MSA extraction in internal testing (assumed) |
+| C — Key Term Extraction | Can it meet accuracy requirements? | PARTIAL | Targeting ≥ 88% F1; current zero-shot is ~76% F1 (assumed baseline); few-shot prompt expected to close the gap |
+| C — Key Term Extraction | Can it scale? | PASS | OpenAI API scales horizontally; rate limits manageable at projected early usage |
+| C — Key Term Extraction | How fast can we get feedback? | PASS | User corrections are logged immediately; weekly review cycle planned |
+| C — Key Term Extraction | What are the laws? | PARTIAL | GDPR compliance required; no PII used in prompts beyond the contract itself; legal review of data processing needed before EU launch |
+| C — Key Term Extraction | What about bias? | PARTIAL | Model may perform worse on non-US/non-UK contract conventions; in-scope for MVP is English-language contracts only |
+| C — Key Term Extraction | How transparent/explainable? | PASS | Source sentence shown per term; confidence score shown; user can view the raw text |
+| C — Key Term Extraction | How easy to judge good vs bad? | PASS | Ground truth is the contract text itself; user corrections provide direct signal |
+| F — Contract Chat | Is ML necessary? | PASS | Natural language Q&A over unstructured legal text requires LLM understanding |
+| F — Contract Chat | Can it meet accuracy requirements? | PARTIAL | Grounding via full contract context reduces hallucination; risk remains for ambiguous or multi-part clauses |
+| F — Contract Chat | What about bias? | PARTIAL | Model may be overconfident on unfamiliar contract types; confidence is not surfaced in chat (only in extraction) — mitigation: add "Based on the document…" prefix to all responses |
+| F — Contract Chat | How transparent/explainable? | PASS | Mandatory page citation on every response; system prompt forbids using general knowledge |
+
+#### Overall Risk Summary
+
+| Component | Risk Level | Mitigation |
+|---|---|---|
+| B — PDF Text Extraction | Low | Reject scanned PDFs gracefully with clear user message; support text-layer PDFs only at MVP |
+| C — Key Term Extraction | Medium | Few-shot prompting + offline eval suite + user correction feedback loop; confidence scoring gives user control |
+| D — Custom Term Addition | Low | User-defined terms are injected into a well-tested prompt schema; limited to 5 terms at MVP to manage context length |
+| E — Results Display | Low | PDF.js is a mature, battle-tested library; lazy page loading mitigates large file rendering issues |
+| F — Contract Chat | Medium-High | System prompt strictly limits responses to document text; page citation enforced; "I cannot find this in the document" fallback added |
+| G — Dashboard & History | Low | Simple Supabase queries with indexed user_id; no AI involvement |
+| H — Feedback Collection | Low | Simple form-to-database write; no AI involvement |
+
+#### Prioritised Stories (MVP Scope)
+
+| Story ID | Title | Priority | Points | Status |
+|---|---|---|---|---|
+| US-001 | User authentication (sign up / sign in / sign out) | P0 | 3 | To Do |
+| US-002 | PDF upload + text extraction | P0 | 5 | To Do |
+| US-004 | Confidence score display per term | P0 | 3 | To Do |
+| US-005 | Custom key term addition before processing | P0 | 4 | To Do |
+| US-003 | Page number attribution per key term | P0 | 3 | To Do |
+| US-011-partial | Key terms panel with value display | P0 | 5 | To Do |
+| US-006 | Inline PDF viewer in results page | P1 | 5 | To Do |
+| US-007 | Chat with contract | P1 | 8 | To Do |
+| US-012 | Persistent chat history per contract | P1 | 3 | To Do |
+| US-008 | Dashboard with contract history | P1 | 5 | To Do |
+| US-009 | Inline key term editing | P1 | 3 | To Do |
+| US-010 | Feedback rating submission | P2 | 2 | Backlog |
+| US-011 | Export key terms to CSV / PDF | P2 | 4 | Backlog |
+
+### Roadmap
+
+| Release | Features Included | Duration |
+|---|---|---|
+| **v0.1 — Foundation (MEP)** | Supabase project setup + all DB tables; Landing page (static, no dynamic content); Email/password auth; Redirect to Dashboard on login; Empty dashboard state | Weeks 1–2 |
+| **v0.2 — Core Review Flow** | PDF upload screen with contract type selector; pdf-parse text extraction; OpenAI key term extraction (standard terms, NDA + MSA prompt); Key terms panel (name, value, page, confidence); Confidence warning on low-score terms; Results stored in Supabase | Weeks 3–5 |
+| **v0.3 — Enriched Experience** | Pre-processing preview of key terms to be fetched; Custom key term addition (up to 5 terms); Inline PDF viewer (PDF.js); Click-to-navigate from key term panel to page in PDF viewer; Source sentence expandable tooltip | Weeks 6–8 |
+| **v0.4 — Chat & History** | Contract chat interface (full contract context passed to GPT-4o); Persistent chat session storage in Supabase; Dashboard populated with contract history (sortable list); Inline key term editing with edit badge; Error states for upload failures and OpenAI timeouts | Weeks 9–11 |
+| **v1.0 — Launch** | Feedback submission (thumbs up/down + comment); End-to-end performance optimisation (target: ≤ 30s P95); Security audit (RLS policies, signed URL expiry, API key management); WCAG 2.1 AA review; Rate limiting on OpenAI calls; Onboarding tooltips for first-time users | Weeks 12–14 |
+| **v1.1 — Post-Launch Iteration** | Export key terms to CSV; Export results summary to PDF; Batch contract upload (up to 5 contracts); Dashboard analytics (charts: contracts by month, term correction rate) | Weeks 15–18 |
+| **v1.2 — Growth** | Scanned PDF support via OCR (AWS Textract or equivalent); Contract comparison view (side-by-side key terms across 2 contracts); Email notifications on processing completion; Multi-user workspace (team plans) | Weeks 19–24 |
+
+**Dependencies:**
+
+- OpenAI API access and approved usage terms (required before v0.2 ships)
+- Supabase project provisioned with Pro plan for production (required before v1.0)
+- Legal review of terms of service and data processing agreement (required before v1.0 public launch)
+- GDPR DPA with OpenAI confirmed before EU user onboarding
+
+**External Dependencies:**
+
+| Dependency | Risk | Mitigation |
+|---|---|---|
+| OpenAI API availability | OpenAI outages directly block contract processing | Implement retry with exponential backoff (3 attempts); surface human-readable error to user with "Try again in a few minutes" CTA |
+| OpenAI pricing changes | Token cost increases could push per-analysis cost above $0.25 threshold | Monitor usage monthly; maintain cost alerting at 80% of budget threshold; evaluate Claude or Gemini as fallback if cost doubles |
+| Supabase free tier limits | 500 MB DB + 1 GB storage on free tier; will breach at ~200 contracts | Migrate to Supabase Pro ($25/month) before beta launch; alert at 70% storage usage |
+| PDF.js rendering compatibility | Complex PDFs with unusual fonts or layouts may not render correctly | Test against 50 real-world NDAs and MSAs during beta; provide a "download PDF" fallback link if rendering fails |
+| Browser file API limits | Large PDFs (near 10 MB) may cause browser memory issues on low-end devices | Enforce 10 MB server-side limit; recommend Chrome/Firefox on desktop; warn mobile users |
+
+**Internal Risks:**
+
+| Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|
+| OpenAI extraction accuracy below 88% F1 target | Medium | High | Few-shot prompt tuning + offline eval suite; lower launch threshold to 82% F1 with transparency to users (confidence scores visible) |
+| Users uploading non-NDA/MSA contracts | High | Low | Soft warning if contract type detection doesn't match user's selection; graceful degradation (still extracts, just may miss domain-specific terms) |
+| Chat hallucination (AI answers from general knowledge, not document) | Medium | High | System prompt enforces document-only answers; automated test: feed a question about a topic not in the document, expect "I cannot find this" response |
+| Supabase RLS misconfiguration exposing user data | Low | Critical | Pre-launch security review: attempt cross-user data access from test accounts; RLS unit tests in CI pipeline |
+
 ---
 
-## 2. Solution Definition
+## 4. MVP Features
 
 ### User Flows
 
@@ -209,16 +320,6 @@ Results Page → Click "Chat" Tab → Type Question → OpenAI Response (grounde
 | FR-13 | The system must store all contracts, key terms, sessions, messages, and feedback in a single Supabase project with row-level security | P0 | Each table has a `user_id` foreign key; RLS policies ensure users only see their own data |
 | FR-14 | The complete database setup — all tables, indexes, triggers, RLS policies, the Supabase Storage bucket, and Storage RLS policies — must be expressible as a single paste-and-run SQL file | P0 | Use `INSERT INTO storage.buckets` to create the bucket and `CREATE POLICY ON storage.objects` for Storage RLS; file path pattern is `contracts/{user_id}/{contract_id}/{filename}.pdf`; Storage policies must restrict INSERT/SELECT/DELETE to `auth.uid()::text = (storage.foldername(name))[1]` |
 
-**Non-Functional Requirements:**
-
-- **Performance:** P95 end-to-end extraction latency (upload → results displayed) ≤ 30 seconds for contracts up to 20 pages. Chat response latency ≤ 15 seconds P95.
-- **Scalability:** The system must handle 100 concurrent contract analyses without degradation during beta. Architecture must support horizontal scaling to 1,000 concurrent users post-launch.
-- **Security:** PDFs optionally stored in Supabase Storage with signed URLs (expiry: 1 hour) for the inline PDF viewer. Storage upload is non-blocking — if it fails, the AI pipeline continues using the extracted text stored in the database; only the PDF viewer is unavailable. All data encrypted at rest (AES-256) and in transit (TLS 1.3). Supabase Row Level Security (RLS) enforced on all tables so users can only read and write their own rows.
-- **Reliability:** 99.5% uptime SLA. OpenAI API errors must be caught and surfaced to the user with a human-readable message and a retry option — not a silent failure.
-- **Usability:** The product must be usable by a non-lawyer with no onboarding training. All legal jargon in the UI must be tooltipped or explained in plain English. WCAG 2.1 AA accessibility compliance.
-- **Data retention:** Uploaded PDFs stored for 90 days post last-access, then auto-deleted. Users can manually delete a contract and all associated data at any time.
-- **Compliance:** GDPR-ready: user data deletion on request, data processing agreement available. No contract content is used to train third-party models. OpenAI API is configured with `user` parameter and no training opt-in.
-
 ### Agent Capabilities & System Behaviour
 
 | Component | Input | Output | Autonomy Level | Human-in-Loop Trigger |
@@ -231,7 +332,49 @@ Results Page → Click "Chat" Tab → Type Question → OpenAI Response (grounde
 
 ---
 
-## 3. Technical Requirements
+## 5. Constraints
+
+**Performance constraints:**
+
+- P95 end-to-end extraction latency (upload → results displayed) ≤ 30 seconds for contracts up to 20 pages.
+- Time to first extracted key-term display ≤ 30 seconds P95 for contracts ≤ 20 pages.
+- Chat response latency ≤ 15 seconds P95.
+- Each OpenAI call ≤ 20 seconds P95.
+- Inline edit saves to Supabase within 2 seconds; export file generation within 5 seconds.
+- Auth flow completes within 10 seconds.
+
+**Upload & document constraints:**
+
+- PDF uploads limited to **10 MB** and **20 pages**; files outside these limits are rejected with a clear error.
+- Contract length ≤ 15,000 tokens for MVP; longer contracts rejected with a clear message.
+- Only **text-layer PDFs** supported; scanned/image PDFs fail gracefully ("Scanned PDFs are not supported yet"). Trigger: extracted text < 100 words.
+- Only **NDA and MSA** English-language contracts (US/UK law) in scope for MVP.
+- Maximum **5 custom key terms** per analysis at MVP to manage context length.
+
+**Cost constraints:**
+
+- Cost per contract analysis ≤ $0.25 per 20-page contract (extraction target ≤ $0.20).
+
+**Scalability constraints:**
+
+- Must handle 100 concurrent contract analyses without degradation during beta.
+- Architecture must support horizontal scaling to 1,000 concurrent users post-launch.
+
+**Reliability & security constraints:**
+
+- 99.5% uptime SLA. OpenAI API errors must be caught and surfaced with a human-readable message and retry option — no silent failures.
+- PDFs optionally stored in Supabase Storage with signed URLs (expiry: 1 hour). Storage upload is non-blocking — failure only hides the PDF viewer; the AI pipeline continues using stored text.
+- All data encrypted at rest (AES-256) and in transit (TLS 1.3). Supabase RLS enforced on all tables.
+
+**Usability & compliance constraints:**
+
+- Usable by a non-lawyer with no onboarding training; all legal jargon tooltipped or explained in plain English. WCAG 2.1 AA compliance.
+- Data retention: uploaded PDFs stored for 90 days post last-access, then auto-deleted. Users can manually delete a contract and all associated data at any time.
+- GDPR-ready: user data deletion on request; DPA available; no contract content used to train third-party models; OpenAI API configured with `user` parameter and no training opt-in.
+
+---
+
+## 6. Technical Requirements
 
 ### Architecture Overview
 
@@ -247,36 +390,84 @@ The system is built as a single-tenant web application with a React frontend, a 
 
 ### Database & Storage Setup Requirements
 
-ContractIQ uses Supabase as its single backend platform, providing authentication, a managed PostgreSQL database, and file storage — all within one project.
+> **Engineering rule:** The generated `database.sql` must be a single paste-and-run file that sets up the entire backend from zero — tables, triggers, indexes, RLS, Storage bucket, and Storage policies. **Nothing requires a dashboard click.** The engineering doc and implementation specs must reproduce every SQL block below verbatim.
 
-**Database:** Six tables store all application data in dependency order: `contracts` (the central entity, created at upload), `key_terms` (one row per extracted term), `term_corrections` (user edits to AI output), `chat_sessions` (one per contract), `chat_messages` (individual conversation turns), and `user_feedback` (thumbs up/down ratings with optional comments). Every table enforces row-level security so each user can only read and write their own rows. Timestamps are automatically maintained via database triggers.
+#### Required SQL blocks (must all appear in `database.sql`)
 
-**File storage:** Uploaded PDFs are stored in a private bucket scoped to each user. The full PDF text is extracted once at upload time, stored in the database with page markers, and reused by both the extraction pipeline and the chat agent — neither feature re-downloads the original file. Storage upload is non-blocking: if it fails, only the inline PDF viewer is unavailable; extraction and chat continue uninterrupted using the stored text. The PDF viewer uses time-limited signed URLs (1-hour expiry); a paginated text viewer serves as an automatic fallback when a signed URL is unavailable.
+**Block 0 — shared trigger function** (runs before any table)
+```sql
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at = now(); RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+```
 
-**Access control:** Storage policies mirror database row-level security — users can only upload to, view, and delete files within their own folder path. All policies are defined in code and require no manual configuration in the Supabase dashboard.
+**Block 1–6 — application tables** (in dependency order)
+Each table must follow this pattern:
+```sql
+CREATE TABLE IF NOT EXISTS {table} ( … );
+CREATE INDEX IF NOT EXISTS idx_{table}_{col} ON {table} ({col});
+ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;
+CREATE POLICY {table}_{action}_own ON {table} FOR {action} USING (auth.uid() = user_id);
+```
+Tables in order: `contracts` → `key_terms` → `term_corrections` → `chat_sessions` → `chat_messages` → `user_feedback`
 
+**Block 7 — Supabase Storage bucket** (must be SQL, NOT a dashboard step)
+```sql
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('contracts', 'contracts', false, 10485760, ARRAY['application/pdf'])
+ON CONFLICT (id) DO NOTHING;
+```
 
+**Block 8 — Storage RLS policies** (must be SQL, NOT a dashboard step)
+```sql
+CREATE POLICY "storage_insert_own_contracts"
+  ON storage.objects FOR INSERT TO authenticated
+  WITH CHECK (bucket_id = 'contracts' AND auth.uid()::text = (storage.foldername(name))[1]);
 
----
+CREATE POLICY "storage_select_own_contracts"
+  ON storage.objects FOR SELECT TO authenticated
+  USING (bucket_id = 'contracts' AND auth.uid()::text = (storage.foldername(name))[1]);
 
-### Grounding Strategy
+CREATE POLICY "storage_delete_own_contracts"
+  ON storage.objects FOR DELETE TO authenticated
+  USING (bucket_id = 'contracts' AND auth.uid()::text = (storage.foldername(name))[1]);
+```
 
-All AI outputs are grounded strictly in the uploaded contract text. For extraction, the full contract text is passed as structured context with no general knowledge inference permitted. For chat, a retrieval-augmented approach passes the entire contract text plus conversation history on every turn; the system prompt explicitly forbids answering from general legal knowledge and mandates a `[Page X]` citation on every response.
+**Block 9 — migration pattern** (for any column added after initial schema)
+```sql
+ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {type};
+```
+Place migration blocks **at the top** of `database.sql`, before the `CREATE TABLE` statements.
 
-### Prompt Strategy
+#### Storage rules
+- File path pattern: `contracts/{user_id}/{contract_id}/{filename}.pdf`
+- Storage upload is **non-blocking**: if it fails, only the PDF viewer is hidden; the AI pipeline (extraction + chat) uses `contract_text` from the DB and is unaffected
+- Signed URL expiry: 3600 seconds (1 hour)
+- PDF viewer has a **text viewer fallback**: when `signed_pdf_url` is null but `contract_text` exists, render the stored text with `[PAGE N]` section markers and font-size controls
 
-| Task | Technique | Output Format | Rationale |
-|---|---|---|---|
-| Key term extraction | Few-shot (3 labelled NDA examples, 3 MSA examples in system prompt) | JSON array: `[{ "term_name": string, "value": string, "page_number": int, "confidence_score": float, "source_sentence": string }]` | Consistent structured output across clause variant diversity; few-shot examples ground the model on the expected schema |
-| Confidence scoring | Embedded in extraction prompt — model self-reports a 0.0–1.0 score alongside each term | Float field within the JSON term object | Avoids a second inference call; model reasons about its own certainty while extracting |
-| Custom term extraction | Zero-shot with term name injected into the extraction prompt as an additional target | Same JSON schema as standard terms | Custom terms are appended to the standard term list passed to the model |
-| Contract chat (Q&A) | Retrieval-Augmented: full contract text passed as context + conversation history (last 10 turns); system prompt: "Answer only from the document text provided. If the answer is not in the document, say so." | Free text with a mandatory page citation tag: `[Page X]` | Grounds responses strictly in the uploaded document; prevents hallucination from general legal knowledge |
-| Error recovery | If JSON parse fails, a retry prompt is sent: "Your previous response was not valid JSON. Return only the JSON array, no explanation." | JSON array | Single automatic retry before surfacing an error to the user |
+#### Key `contracts` table columns
+| Column | Type | Purpose |
+|---|---|---|
+| `contract_text` | `text` | Full extracted PDF text with `[PAGE N]` markers; set at upload; read by processing and chat routes |
+| `status` | `text` | `pending \| processing \| completed \| error` — drives the results page polling loop |
+| `file_path` | `text` | Supabase Storage path; nullable; only needed for the PDF viewer signed URL |
+| `error_message` | `text` | Populated when `status = 'error'`; shown on the results page with a retry button |
 
-**Prompt improvement plan:**
-- Maintain a versioned prompt library (v1.0, v1.1…) in a shared document accessible to the product team
-- A/B test extraction prompts monthly on a 50-contract offline eval set
-- Log every user edit to a `term_corrections` view; trigger a prompt review if correction rate exceeds 12% of terms in any 7-day window
+#### database.sql completeness checklist
+The engineering doc must verify the generated file covers all of these before marking schema work done:
+- [ ] `update_updated_at()` trigger function
+- [ ] `contracts` table + indexes + RLS + `updated_at` trigger
+- [ ] `key_terms` table + indexes + RLS
+- [ ] `term_corrections` table + indexes + RLS (INSERT only for users; SELECT for service role only)
+- [ ] `chat_sessions` table + UNIQUE (contract_id) + indexes + RLS + `updated_at` trigger
+- [ ] `chat_messages` table + composite index on `(session_id, created_at)` + RLS
+- [ ] `user_feedback` table + UNIQUE (user_id, contract_id) + index + RLS
+- [ ] `INSERT INTO storage.buckets` — bucket `contracts`, private, 10 MB limit, PDF only
+- [ ] `CREATE POLICY storage_insert_own_contracts ON storage.objects`
+- [ ] `CREATE POLICY storage_select_own_contracts ON storage.objects`
+- [ ] `CREATE POLICY storage_delete_own_contracts ON storage.objects`
+- [ ] Migration block for `contract_text` column (`ALTER TABLE contracts ADD COLUMN IF NOT EXISTS`)
 
 ### Model Requirements
 
@@ -304,141 +495,70 @@ All AI outputs are grounded strictly in the uploaded contract text. For extracti
 
 ---
 
-## 4. Prioritisation
+## 7. Grounding Strategy
 
-### Breaking the Agentic Workflow into Components
+ContractIQ's core trust guarantee is that every AI output is **grounded in the uploaded contract text**, never in the model's general legal knowledge.
 
-1. **Component A — User Authentication & Session Management** (Supabase Auth)
-2. **Component B — PDF Upload & Text Extraction** (Supabase Storage + pdf-parse)
-3. **Component C — Key Term Extraction via OpenAI** (GPT-4o structured output)
-4. **Component D — Custom Term Addition** (user input → appended to extraction prompt)
-5. **Component E — Results Display (PDF Viewer + Key Terms Panel)** (PDF.js + React)
-6. **Component F — Contract Chat (Q&A)** (GPT-4o RAG-style with full contract context)
-7. **Component G — Dashboard & History** (Supabase queries on contracts + key_terms tables)
-8. **Component H — Feedback Collection** (Supabase write to user_feedback table)
+- **Single source of truth:** PDF text is extracted **once at upload** with `[PAGE N]` markers and stored in `contracts.contract_text`. Both the extraction pipeline and the chat route read from this stored text — the model never sees anything except the user's own document.
+- **Extraction grounding:** Every extracted term carries a `source_sentence` — the verbatim sentence from the contract that the value was drawn from — plus a 1-indexed `page_number`. This makes each output traceable back to the exact location in the document (surfaced via the expandable "Why?" section).
+- **Chat grounding (RAG-style):** The chat route passes the **full contract text** as context alongside conversation history. The system prompt instructs: *"Answer only from the document text provided. If the answer is not in the document, say so."* Every chat response must include a mandatory `[Page X]` citation.
+- **Full-context strategy:** For contracts ≤ 15,000 tokens, the entire document is passed on every turn (no chunking / vector retrieval needed at MVP). This guarantees no relevant clause is missed due to retrieval error. A chunked RAG strategy is deferred until contract length limits are raised post-v1.0.
+- **Conversation memory:** The full conversation history (up to 200 messages, ascending) is passed on every turn, enabling memory-style questions ("what did you say earlier about X?"). A query-classification layer (`contract` / `history` / `both`) adjusts the system prompt and context inclusion without an extra API call.
+- **"Not found" as a valid answer:** When information is absent from the document, "I cannot find this in the document" is the correct, expected response — not a failure.
 
-### Risk Assessment per Component
+---
 
-| Component | Check | Result | Explanation |
+## 8. Prompt Strategy
+
+| Task | Technique | Output Format | Rationale |
 |---|---|---|---|
-| B — PDF Text Extraction | Is ML necessary? | FAIL | Rule-based PDF parsing (pdf-parse) is sufficient for text-layer PDFs; ML (OCR) only needed for scanned PDFs, which are out of scope |
-| B — PDF Text Extraction | Do we have data? | PASS | pdf-parse handles standard PDF text layers without training data |
-| B — PDF Text Extraction | Can it meet accuracy requirements? | PARTIAL | ≥ 95% text fidelity for text-layer PDFs; scanned PDFs will fail gracefully |
-| B — PDF Text Extraction | What about bias? | PASS | Pure text extraction; no model bias risk |
-| B — PDF Text Extraction | **Architecture note** | — | Text is extracted **once at upload**, stored in `contracts.contract_text` with `[PAGE N]` markers. The processing pipeline and chat route both read from the DB — neither downloads the PDF again. Supabase Storage is used only for the inline PDF viewer (non-blocking: if Storage is unavailable, only the viewer is hidden; the AI pipeline is unaffected) |
-| C — Key Term Extraction | Is ML necessary? | PASS | Clause variant diversity across law firms and geographies makes rule-based extraction untenable |
-| C — Key Term Extraction | Do we have data to train? | PARTIAL | No proprietary labelled dataset at launch; relying on CUAD dataset + few-shot prompting. Fine-tuning planned for v2 |
-| C — Key Term Extraction | Can it be solved by AI? | PASS | GPT-4o demonstrated strong NDA/MSA extraction in internal testing (assumed) |
-| C — Key Term Extraction | Can it meet accuracy requirements? | PARTIAL | Targeting ≥ 88% F1; current zero-shot is ~76% F1 (assumed baseline); few-shot prompt expected to close the gap |
-| C — Key Term Extraction | Can it scale? | PASS | OpenAI API scales horizontally; rate limits manageable at projected early usage |
-| C — Key Term Extraction | How fast can we get feedback? | PASS | User corrections are logged immediately; weekly review cycle planned |
-| C — Key Term Extraction | What are the laws? | PARTIAL | GDPR compliance required; no PII used in prompts beyond the contract itself; legal review of data processing needed before EU launch |
-| C — Key Term Extraction | What about bias? | PARTIAL | Model may perform worse on non-US/non-UK contract conventions; in-scope for MVP is English-language contracts only |
-| C — Key Term Extraction | How transparent/explainable? | PASS | Source sentence shown per term; confidence score shown; user can view the raw text |
-| C — Key Term Extraction | How easy to judge good vs bad? | PASS | Ground truth is the contract text itself; user corrections provide direct signal |
-| F — Contract Chat | Is ML necessary? | PASS | Natural language Q&A over unstructured legal text requires LLM understanding |
-| F — Contract Chat | Can it meet accuracy requirements? | PARTIAL | Grounding via full contract context reduces hallucination; risk remains for ambiguous or multi-part clauses |
-| F — Contract Chat | What about bias? | PARTIAL | Model may be overconfident on unfamiliar contract types; confidence is not surfaced in chat (only in extraction) — mitigation: add "Based on the document…" prefix to all responses |
-| F — Contract Chat | How transparent/explainable? | PASS | Mandatory page citation on every response; system prompt forbids using general knowledge |
+| Key term extraction | Few-shot (3 labelled NDA examples, 3 MSA examples in system prompt) | JSON array: `[{ "term_name": string, "value": string, "page_number": int, "confidence_score": float, "source_sentence": string }]` | Consistent structured output across clause variant diversity; few-shot examples ground the model on the expected schema |
+| Confidence scoring | Embedded in extraction prompt — model self-reports a 0.0–1.0 score alongside each term | Float field within the JSON term object | Avoids a second inference call; model reasons about its own certainty while extracting |
+| Custom term extraction | Zero-shot with term name injected into the extraction prompt as an additional target | Same JSON schema as standard terms | Custom terms are appended to the standard term list passed to the model |
+| Contract chat (Q&A) | Retrieval-Augmented: full contract text passed as context + conversation history (last 10 turns); system prompt: "Answer only from the document text provided. If the answer is not in the document, say so." | Free text with a mandatory page citation tag: `[Page X]` | Grounds responses strictly in the uploaded document; prevents hallucination from general legal knowledge |
+| Error recovery | If JSON parse fails, a retry prompt is sent: "Your previous response was not valid JSON. Return only the JSON array, no explanation." | JSON array | Single automatic retry before surfacing an error to the user |
 
-### Overall Risk Summary
-
-| Component | Risk Level | Mitigation |
-|---|---|---|
-| B — PDF Text Extraction | Low | Reject scanned PDFs gracefully with clear user message; support text-layer PDFs only at MVP |
-| C — Key Term Extraction | Medium | Few-shot prompting + offline eval suite + user correction feedback loop; confidence scoring gives user control |
-| D — Custom Term Addition | Low | User-defined terms are injected into a well-tested prompt schema; limited to 5 terms at MVP to manage context length |
-| E — Results Display | Low | PDF.js is a mature, battle-tested library; lazy page loading mitigates large file rendering issues |
-| F — Contract Chat | Medium-High | System prompt strictly limits responses to document text; page citation enforced; "I cannot find this in the document" fallback added |
-| G — Dashboard & History | Low | Simple Supabase queries with indexed user_id; no AI involvement |
-| H — Feedback Collection | Low | Simple form-to-database write; no AI involvement |
-
-### Prioritised Stories (MVP Scope)
-
-| Story ID | Title | Priority | Points | Status |
-|---|---|---|---|---|
-| US-001 | User authentication (sign up / sign in / sign out) | P0 | 3 | To Do |
-| US-002 | PDF upload + text extraction | P0 | 5 | To Do |
-| US-004 | Confidence score display per term | P0 | 3 | To Do |
-| US-005 | Custom key term addition before processing | P0 | 4 | To Do |
-| US-003 | Page number attribution per key term | P0 | 3 | To Do |
-| US-011-partial | Key terms panel with value display | P0 | 5 | To Do |
-| US-006 | Inline PDF viewer in results page | P1 | 5 | To Do |
-| US-007 | Chat with contract | P1 | 8 | To Do |
-| US-012 | Persistent chat history per contract | P1 | 3 | To Do |
-| US-008 | Dashboard with contract history | P1 | 5 | To Do |
-| US-009 | Inline key term editing | P1 | 3 | To Do |
-| US-010 | Feedback rating submission | P2 | 2 | Backlog |
-| US-011 | Export key terms to CSV / PDF | P2 | 4 | Backlog |
+**Prompt improvement plan:**
+- Maintain a versioned prompt library (v1.0, v1.1…) in a shared document accessible to the product team
+- A/B test extraction prompts monthly on a 50-contract offline eval set
+- Log every user edit to a `term_corrections` view; trigger a prompt review if correction rate exceeds 12% of terms in any 7-day window
 
 ---
 
-## 5. Roadmap
+## 9. Hallucination Guardrails
 
-| Release | Features Included | Duration |
-|---|---|---|
-| **v0.1 — Foundation (MEP)** | Supabase project setup + all DB tables; Landing page (static, no dynamic content); Email/password auth; Redirect to Dashboard on login; Empty dashboard state | Weeks 1–2 |
-| **v0.2 — Core Review Flow** | PDF upload screen with contract type selector; pdf-parse text extraction; OpenAI key term extraction (standard terms, NDA + MSA prompt); Key terms panel (name, value, page, confidence); Confidence warning on low-score terms; Results stored in Supabase | Weeks 3–5 |
-| **v0.3 — Enriched Experience** | Pre-processing preview of key terms to be fetched; Custom key term addition (up to 5 terms); Inline PDF viewer (PDF.js); Click-to-navigate from key term panel to page in PDF viewer; Source sentence expandable tooltip | Weeks 6–8 |
-| **v0.4 — Chat & History** | Contract chat interface (full contract context passed to GPT-4o); Persistent chat session storage in Supabase; Dashboard populated with contract history (sortable list); Inline key term editing with edit badge; Error states for upload failures and OpenAI timeouts | Weeks 9–11 |
-| **v1.0 — Launch** | Feedback submission (thumbs up/down + comment); End-to-end performance optimisation (target: ≤ 30s P95); Security audit (RLS policies, signed URL expiry, API key management); WCAG 2.1 AA review; Rate limiting on OpenAI calls; Onboarding tooltips for first-time users | Weeks 12–14 |
-| **v1.1 — Post-Launch Iteration** | Export key terms to CSV; Export results summary to PDF; Batch contract upload (up to 5 contracts); Dashboard analytics (charts: contracts by month, term correction rate) | Weeks 15–18 |
-| **v1.2 — Growth** | Scanned PDF support via OCR (AWS Textract or equivalent); Contract comparison view (side-by-side key terms across 2 contracts); Email notifications on processing completion; Multi-user workspace (team plans) | Weeks 19–24 |
+ContractIQ treats hallucination — the model asserting something not in the contract — as the top trust risk. Layered guardrails address it at extraction, chat, and UI level.
 
-**Dependencies:**
+**Extraction-layer guardrails:**
+- **Confidence scoring on every term:** The model self-reports a 0–100% confidence per extracted term. Scores are colour-coded (green ≥ 80%, amber 50–79%, red < 50%).
+- **Low-confidence flagging:** Terms with confidence < 50% show a ⚠️ warning and a non-dismissible tooltip: *"Low confidence — we recommend verifying this in the document directly."* The term is **never hidden** — it is shown with the warning so the user retains control.
+- **Source-sentence requirement:** Every term must carry the verbatim `source_sentence` it was drawn from; a term with no supporting sentence is treated as unreliable.
+- **Deterministic settings:** Extraction runs at temperature 0.1 with JSON mode enforced to minimise fabrication and unparseable output.
+- **Calibration monitoring:** Monthly calibration evaluation checks that predicted confidence matches observed accuracy; a UI calibration warning is shown if eval reveals ≥ 15% miscalibration.
 
-- OpenAI API access and approved usage terms (required before v0.2 ships)
-- Supabase project provisioned with Pro plan for production (required before v1.0)
-- Legal review of terms of service and data processing agreement (required before v1.0 public launch)
-- GDPR DPA with OpenAI confirmed before EU user onboarding
+**Chat-layer guardrails:**
+- **Document-only system prompt:** The model is instructed to answer strictly from the provided contract text and to reply "I cannot find this in the document" when the answer is absent.
+- **Mandatory page citation:** Every chat response must include a `[Page X]` citation, making claims verifiable against the source.
+- **"Based on the document…" framing:** Responses are prefixed to remind users the answer is scoped to their contract, mitigating model overconfidence on unfamiliar contract types.
+- **Automated hallucination test:** A regression test feeds a question about a topic not present in the document and asserts the model responds "I cannot find this."
 
----
-
-## 6. Risks & Dependencies
-
-### External Dependencies
-
-| Dependency | Risk | Mitigation |
-|---|---|---|
-| OpenAI API availability | OpenAI outages directly block contract processing | Implement retry with exponential backoff (3 attempts); surface human-readable error to user with "Try again in a few minutes" CTA |
-| OpenAI pricing changes | Token cost increases could push per-analysis cost above $0.25 threshold | Monitor usage monthly; maintain cost alerting at 80% of budget threshold; evaluate Claude or Gemini as fallback if cost doubles |
-| Supabase free tier limits | 500 MB DB + 1 GB storage on free tier; will breach at ~200 contracts | Migrate to Supabase Pro ($25/month) before beta launch; alert at 70% storage usage |
-| PDF.js rendering compatibility | Complex PDFs with unusual fonts or layouts may not render correctly | Test against 50 real-world NDAs and MSAs during beta; provide a "download PDF" fallback link if rendering fails |
-| Browser file API limits | Large PDFs (near 10 MB) may cause browser memory issues on low-end devices | Enforce 10 MB server-side limit; recommend Chrome/Firefox on desktop; warn mobile users |
-
-### Internal Risks
-
-| Risk | Likelihood | Impact | Mitigation |
-|---|---|---|---|
-| OpenAI extraction accuracy below 88% F1 target | Medium | High | Few-shot prompt tuning + offline eval suite; lower launch threshold to 82% F1 with transparency to users (confidence scores visible) |
-| Users uploading non-NDA/MSA contracts | High | Low | Soft warning if contract type detection doesn't match user's selection; graceful degradation (still extracts, just may miss domain-specific terms) |
-| Chat hallucination (AI answers from general knowledge, not document) | Medium | High | System prompt enforces document-only answers; automated test: feed a question about a topic not in the document, expect "I cannot find this" response |
-| Supabase RLS misconfiguration exposing user data | Low | Critical | Pre-launch security review: attempt cross-user data access from test accounts; RLS unit tests in CI pipeline |
-
-### Hallucination Guardrails
-
-| Guardrail | Implementation |
-|---|---|
-| Document-only system prompt | Chat system prompt: "Answer only from the document text provided. If the answer is not in the document, say so." General legal knowledge is explicitly forbidden |
-| Mandatory page citation | Every chat response must include a `[Page X]` tag; responses without a citation are flagged for retry |
-| Confidence warning | Any extracted term with confidence < 50% shows a ⚠️ icon and tooltip recommending manual verification — it is never hidden |
-| Null-not-fabricate policy | If the model cannot locate a term, it returns `null` for value and `0` for confidence — fabricating a plausible value is not permitted |
-| Automated groundedness eval | Monthly evaluation: 50 expert-reviewed Q&A pairs scored as Grounded / Hallucinated / Not Found; target ≤ 5% hallucinated responses |
+**UI / human-in-the-loop guardrails:**
+- **Inline correction:** Users can edit any extracted term; the original AI value is stored separately to feed the improvement loop.
+- **PDF auto-highlight:** Low-confidence terms auto-highlight the nearest matching page span so the user can verify in one click.
+- **"Not legal advice" disclaimer:** Present on every results page — *"This is an AI-assisted review tool, not legal advice. Always verify critical terms with a qualified lawyer."*
 
 ---
 
-## 7. Evaluations
+## 10. Evaluation Strategy
 
-### Evaluation Strategy
-
-**Ground truth sources:**
+### Ground truth sources
 
 - CUAD (Contract Understanding Atticus Dataset) — 13,000+ annotations across 510 commercial contracts; used for offline baseline evaluation
 - 30 manually labelled NDA contracts (internal, annotated by a legal SME before beta)
 - 20 manually labelled MSA contracts (internal, annotated by a legal SME before beta)
 - User-corrected terms (opt-in, anonymised) — fed into ongoing prompt improvement
 
-**Evaluation Plan:**
+### Evaluation Plan
 
 | Eval Type | Method | Target | Cadence |
 |---|---|---|---|
@@ -450,14 +570,18 @@ All AI outputs are grounded strictly in the uploaded contract text. For extracti
 | End-to-end latency | P95 timing from upload submission to results panel rendered | ≤ 30 seconds | Every release |
 | User satisfaction (beta) | Post-review survey: "Were the extracted terms accurate?" (Yes / Partially / No) | ≥ 75% "Yes" in beta | Beta phase |
 
-**AI Performance Monitoring (Post-Launch):**
+### AI Performance Monitoring (Post-Launch)
 - Automated regression suite runs on every deploy using the 50-contract labelled test set
 - Weekly drift check: sample 10 recent user-corrected terms and compare against expected extraction
 - Alert: if correction rate exceeds 12% in any 7-day rolling window, trigger an immediate prompt review
 - Monthly: legal SME audits 5 random contracts from production output for quality assurance
 
-**Evaluation Spreadsheet:**
+### Evaluation Spreadsheet
 [Link to evaluation spreadsheet — to be created before beta] — Columns: `Contract_ID | Contract_Type | Term_Name | Expected_Value | AI_Extracted_Value | Expected_Page | AI_Page | Confidence_Score | F1_Match | Expert_Rating | Notes`
+
+---
+
+## 11. Production Readiness Criteria & Metrics (HHH)
 
 ### HHH Evaluation
 
@@ -475,11 +599,9 @@ All AI outputs are grounded strictly in the uploaded contract text. For extracti
 | Measurement Beta (≤ 50 users) | ≥ 75% user satisfaction in post-review survey | Correction rate ≤ 20% | 0 incidents of misleading output without confidence warning | No P0 bugs; latency ≤ 45s P95; F1 ≥ 82% on eval set |
 | Public Launch | ≥ 80% user satisfaction | Correction rate ≤ 12%; calibration error ≤ 0.10 | Security audit passed; RLS verified; legal disclaimer approved | F1 ≥ 88% NDA / 85% MSA; latency ≤ 30s P95; Supabase Pro provisioned; DPA with OpenAI confirmed |
 
----
+### Responsible AI
 
-## 8. Responsible AI
-
-### Accountability
+**Accountability:**
 
 | Question | Answer |
 |---|---|
@@ -488,7 +610,7 @@ All AI outputs are grounded strictly in the uploaded contract text. For extracti
 | How is sensitive data managed | Uploaded PDFs are stored in Supabase Storage for 90 days and then auto-deleted. The plain-text content extracted from the PDF is stored in `contracts.contract_text` in the database (encrypted at rest) so the AI pipeline does not need to re-download the file on every request. Only the text content and structured key term output are persisted — no model training occurs on this data. Users can delete their contracts and all associated data at any time from their dashboard |
 | Human oversight and control | Confidence scores and source sentences are always shown, enabling human verification. Users can correct any extracted term. A legal disclaimer is present on every results page. Chat responses cite page numbers for traceability. No irreversible action is taken by the AI |
 
-### Transparency
+**Transparency:**
 
 | Question | Answer |
 |---|---|
@@ -497,7 +619,7 @@ All AI outputs are grounded strictly in the uploaded contract text. For extracti
 | Benchmarks shared with users | Accuracy benchmarks (F1 on NDA/MSA test sets) and confidence calibration results will be published on a public trust page once post-launch eval is complete |
 | Disclosures required | "Not legal advice" disclaimer on every results page; confidence scores visible per term; source sentence expandable per term; "Powered by OpenAI GPT-4o" attribution in footer |
 
-### Fairness
+**Fairness:**
 
 | Question | Answer |
 |---|---|
@@ -505,7 +627,7 @@ All AI outputs are grounded strictly in the uploaded contract text. For extracti
 | Why they don't work well and the plan | Training data (CUAD) is heavily weighted toward US commercial contracts. Prompt few-shot examples are US/UK-biased. Plan: after launch, collect opt-in anonymised data from non-US users; add non-US few-shot examples in v1.2; evaluate by jurisdiction in monthly audit |
 | Test/feedback loop to identify gaps | Monthly accuracy audit segmented by contract jurisdiction (where available) and industry; user feedback tagged with contract type helps surface systematic gaps |
 
-### Reliability & Safety
+**Reliability & Safety:**
 
 | Question | Answer |
 |---|---|
@@ -515,21 +637,9 @@ All AI outputs are grounded strictly in the uploaded contract text. For extracti
 | How is system health monitored | Vercel deployment logs; Supabase dashboard for DB and storage metrics; OpenAI usage dashboard for token consumption and error rates; Uptime Robot for endpoint monitoring with alerts to team Slack |
 | Customer communication plan | P0 incident (data exposure, complete outage): in-app banner + email to all affected users within 1 hour; status page updated within 30 minutes. P1 incident (degraded performance): in-app banner within 2 hours |
 
-### Production Readiness
-
-| Checkpoint | Requirement | Status |
-|---|---|---|
-| Security audit | RLS policies verified by cross-user penetration test; signed URL expiry confirmed at 3600s; OpenAI API key confirmed server-side only | Pre-launch |
-| Rate limiting | OpenAI API calls rate-limited per user per minute; file upload endpoint limited to 10 requests/minute | v1.0 |
-| Performance baseline | P95 end-to-end latency ≤ 30s confirmed on 50-contract benchmark; chat response ≤ 15s P95 | v1.0 |
-| Accessibility | WCAG 2.1 AA audit passed; all interactive elements keyboard-navigable; confidence colours supplemented with icons | v1.0 |
-| Legal & compliance | "Not legal advice" disclaimer reviewed by solicitor; GDPR DPA confirmed with Supabase and OpenAI; data deletion flow tested | Pre-launch |
-| Observability | Vercel deployment logs, Supabase metrics, OpenAI usage dashboard, and Uptime Robot alerts all active | v1.0 |
-| Supabase Pro | Project migrated from free tier to Pro plan; storage and DB limits confirmed sufficient for beta volume | Pre-launch |
-
 ---
 
-## 9. Pricing
+## 12. Pricing
 
 ### Development Costs (One-Time / MVP — 14-week build)
 
@@ -601,21 +711,7 @@ Cost per active user per month at 500 users: **$0.71** — unit economics are ex
 
 ---
 
-## 10. Open Questions
-
-| # | Question | Owner | Target Resolution |
-|---|---|---|---|
-| OQ-01 | Should chat history be scoped to one session per contract (current assumption) or allow multiple named sessions per contract? | Product | Before v0.4 development starts |
-| OQ-02 | Will the OpenAI API be called client-side (with a backend proxy) or directly from a server function? The decision affects API key security architecture. | Engineering Lead | Before v0.2 development starts |
-| OQ-03 | What is the legal review status of the "not legal advice" disclaimer? Has it been reviewed by a qualified solicitor? | CEO / Legal | Before v1.0 launch |
-| OQ-04 | Should scanned PDFs trigger an OCR fallback (e.g. AWS Textract) in v1.0, or is the "not supported" error acceptable at launch? | Product | Before v1.0 scope is locked |
-| OQ-05 | Is there a data residency requirement for early customers (e.g. EU-only Supabase region)? | Sales / CEO | Before first EU customer onboarding |
-| OQ-06 | What is the maximum number of custom key terms we support before performance degrades? Needs testing at 10, 15, 20 custom terms. | Engineering | During v0.3 development |
-| OQ-07 | Will the product launch as a web-only app, or is a mobile-responsive design required from day one? | Product / Design | Before v0.3 UI development |
-
----
-
-## 11. Assumptions
+## 13. Assumptions
 
 The following assumptions were made to produce a complete PRD. Each is a risk item that should be validated before the corresponding phase begins:
 
@@ -633,4 +729,3 @@ The following assumptions were made to produce a complete PRD. Each is a risk it
 12. **Pricing model and tiers are directional only** — final pricing will be validated through user interviews and a pricing sensitivity survey during the beta phase.
 13. **The Supabase Storage bucket and its RLS policies are created via SQL**, not via the Supabase dashboard. The `database.sql` file must include `INSERT INTO storage.buckets` and three `CREATE POLICY ON storage.objects` statements (INSERT, SELECT, DELETE). If these are omitted from the SQL file, PDF uploads will silently fail — the upload route will catch the storage error, leave `file_path = null`, and the PDF viewer will not render. The text viewer fallback will still work because `contract_text` is stored independently in the DB.
 14. **The full conversation history is passed to the chat model on every turn**, not just the last 10 messages. The chat route fetches all messages for the session (up to 200) in ascending order and passes them as the message array. This enables memory-style questions ("what did you say earlier about X?"). The query classification layer (`contract` / `history` / `both`) adjusts the system prompt and context inclusion without an extra API call.
-
