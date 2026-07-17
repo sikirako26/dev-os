@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-grey-100;
+  }
+  html {
+    @apply scroll-smooth;
+  }
+  body {
+    @apply bg-white text-grey-900 antialiased;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    @apply outline-none ring-2 ring-blue-500 ring-offset-2 ring-offset-white;
+  }
+}
