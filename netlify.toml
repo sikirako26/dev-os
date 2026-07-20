@@ -1,0 +1,23 @@
+# Netlify configuration for the ContractIQ Next.js app.
+# This repo is a monorepo — the app lives in ./contractiq — so `base` tells
+# Netlify to cd into that folder before installing, building, and publishing.
+# Connecting this GitHub repo to Netlify requires no manual dashboard setup.
+
+[build]
+  base = "contractiq"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# Required for SSR, API routes, middleware, image optimization, and ISR
+# support on Next.js 14 (App Router). Netlify auto-installs this plugin.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Local `netlify dev` proxies the Next.js dev server on this port.
+[dev]
+  command = "npm run dev"
+  targetPort = 3000
+  framework = "next"
